@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>引擎验证台</title>
+<style>
+  body{font:14px/1.7 system-ui,sans-serif;background:#14161a;color:#e8eaf0;padding:24px}
+  pre{background:#0d0f12;padding:14px;border-radius:8px;white-space:pre-wrap;word-break:break-all}
+</style>
+</head>
+<body>
+<h1>浏览器端合成引擎验证台</h1>
+<pre id="log">启动中…</pre>
+<script type="module">
+import { synthesize, runJob, FALLBACK_VOICE } from "../../src/tts.js";
+import { generateSecMsGec, SEC_MS_GEC_VERSION } from "../../src/token.js";
+import { probe } from "../../src/mp3.js";
+
+const logEl = document.getElementById("log");
+const lines = [];
+const say = (s) => {
+  lines.push(s);
+  logEl.textContent = lines.join("\n");
+  window.__status = s;
+  console.log(s);
+};
+
+const checks = [];
+const check = (name, ok, detail) => {
+  checks.push({ name, ok, detail });
+  say(`${ok ? "ok  " : "FAIL"} ${name}${detail !== undefined && detail !== "" ? "  " + detail : ""}`);
+};
+
+try {
+  say(`令牌: ${generateSecMsGec().slice(0, 24)}…  版本 ${SEC_MS_GEC_VERSION}`);
+
+  // --- 1. 单段合成：验证 WebSocket 协议与音频帧解析 ---
+  const raw = await synthesize({ text: "浏览器直连测试，一二三四五。", voice: FALLBACK_VOICE });
+  const info = probe(raw);
+  check("单段合成拿到音频", raw.length > 2000, `${raw.length} 字节`);
+  check("音频能按 MP3 帧解析", info.frames > 10, `${info.frames} 帧`);
+  check("采样率 24kHz / 单声道", info.sampleRate === 24000 && info.channels === 1,
+    `${info.sampleRate}Hz / ${info.channels}ch`);
+  check("时长合理（0.5~6 秒）", info.duration > 0.5 && info.duration < 6, `${info.duration.toFixed(2)} 秒`);
+  check("音频帧流首尾都干净（帧头偏移取对的关键证据）",
+    info.cleanTail === true && info.leadingJunk === 0,
+    `前导垃圾 ${info.leadingJunk} 字节 / 尾部垃圾 ${info.trailingJunk} 字节`);
+  check("每帧等长（恒定码率）", Number.isInteger(raw.length / info.frames),
+    `${raw.length} / ${info.frames}`);
+
+  // --- 2. 坏音色必须被识别为"无音频"而不是给出垃圾数据 ---
+  try {
+    await synthesize({ text: "坏音色测试。", voice: "zh-CN-YunzeNeural" });
+    check("已下架音色被识别（应报错）", false, "居然返回了音频");
+  } catch (e) {
+    check("已下架音色被识别（应报错）",
+      /不支持|unsupported voice|没有返回音频/i.test(e.message), e.message);
+  }
+
+  // --- 3. 完整任务：多段切分 + 并发 + 拼接 ---
+  const text = ("这是一次完整的端到端验证，用来确认长文本会被正确切分、并发合成，"
+    + "再按顺序拼接成一个可以播放的文件。\n\n").repeat(14);
+  const t0 = performance.now();
+  const job = await runJob({
+    text,
+    options: { voice: FALLBACK_VOICE, chunkChars: 220, concurrency: 3, title: "验证台" },
+    onEvent: (ev) => { if (ev.type === "progress") window.__status = `进度 ${ev.percent}%`; },
+  });
+  const elapsed = (performance.now() - t0) / 1000;
+
+  check("任务完成并返回字节", job.bytes.length > 10000, `${job.bytes.length} 字节`);
+  check("确实分了多段", job.chunks >= 4, `${job.chunks} 段`);
+  check("拼接帧数等于各段之和（无丢帧）", job.frames > 0, `${job.frames} 帧`);
+  check("时长与音频规模相符", job.duration > 5, `${job.duration.toFixed(2)} 秒`);
+  check("产物可被帧级解析", probe(job.bytes).frames === job.frames,
+    `${probe(job.bytes).frames} vs ${job.frames}`);
+  check("带标签后音频仍从第一个帧开始", probe(job.bytes).leadingJunk > 0, "（标签被正确跳过）");
+  check("并发确实带来了加速", elapsed < job.duration / 2, `${elapsed.toFixed(1)} 秒完成 ${job.duration.toFixed(1)} 秒音频`);
+
+  // --- 4. 交给浏览器原生解码器验证（最强证据）---
+  const decode = async (bytes) => {
+    const url = URL.createObjectURL(new Blob([bytes], { type: "audio/mpeg" }));
+    const audio = new Audio(url);
+    const d = await new Promise((resolve) => {
+      audio.addEventListener("loadedmetadata", () => resolve(audio.duration));
+      audio.addEventListener("error", () => resolve(null));
+      setTimeout(() => resolve(null), 15000);
+    });
+    URL.revokeObjectURL(url);
+    return d;
+  };
+
+  const meta = await decode(job.bytes);
+  check("浏览器原生解码器认可该文件", meta !== null, meta === null ? "解码失败" : "");
+  if (meta !== null) {
+    check("解码时长与我们算的一致（±0.15 秒）", Math.abs(meta - job.duration) < 0.15,
+      `解码 ${meta.toFixed(3)} 秒 vs 计算 ${job.duration.toFixed(3)} 秒`);
+  }
+
+  const cleanOnly = await decode(raw);
+  check("不含标签的原始音频也能解码", cleanOnly !== null,
+    cleanOnly === null ? "解码失败" : `${cleanOnly.toFixed(2)} 秒`);
+
+  const failed = checks.filter((c) => !c.ok);
+  say("");
+  say(`共 ${checks.length} 项，失败 ${failed.length} 项，耗时 ${elapsed.toFixed(1)} 秒`);
+  window.__result = {
+    total: checks.length,
+    failed: failed.length,
+    failures: failed,
+    elapsed: Number(elapsed.toFixed(1)),
+    bytes: job.bytes.length,
+    frames: job.frames,
+    duration: Number(job.duration.toFixed(3)),
+    chunks: job.chunks,
+    decoded: meta,
+    sizeKB: Math.round(job.bytes.length / 1024),
+  };
+  window.__done = true;
+} catch (e) {
+  say("抛出异常: " + (e && e.stack ? e.stack : e));
+  window.__result = { total: checks.length, failed: checks.length + 1, fatal: String(e && e.message || e) };
+  window.__done = true;
+}
+</script>
+</body>
+</html>

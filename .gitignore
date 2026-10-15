@@ -1,0 +1,19 @@
+# 构建产物与临时文件
+_verify/
+web-root-not-used/
+tests/fixtures/_tmp/
+*.log
+
+# 本地版运行时产物
+local/outputs/
+local/cache/
+local/logs/
+local/tests/_out*/
+__pycache__/
+*.pyc
+
+# 编辑器
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

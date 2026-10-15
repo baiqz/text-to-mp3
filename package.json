@@ -1,0 +1,7 @@
+{
+  "name": "edge-readaloud-web",
+  "private": true,
+  "type": "module",
+  "version": "1.0.0",
+  "description": "纯浏览器端文字转 MP3（直连 Edge 朗读语音服务），零后端，可托管于 GitHub Pages"
+}

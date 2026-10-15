@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>文字转 MP3 · 浏览器版（不限字数）</title>
+<meta name="description" content="纯浏览器端文字转 MP3，无需安装、无需服务器，文本长度不设上限，自动分段合成后拼接。">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔊</text></svg>">
+<style>
+/*__CSS__*/
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="brand">
+    <span class="logo">🔊</span>
+    <div>
+      <h1>文字转 MP3</h1>
+      <p class="sub">浏览器版 · 无需安装 · 字数不限</p>
+    </div>
+  </div>
+  <div class="top-actions">
+    <span class="badge" id="voice-count" title="可选音色数量">声库载入中…</span>
+    <button class="ghost" id="btn-about">说明</button>
+  </div>
+</header>
+
+<main>
+  <section class="panel grow">
+    <div class="panel-head">
+      <h2>要朗读的文字</h2>
+      <div class="head-actions">
+        <button class="ghost sm" id="btn-sample">填入示例</button>
+        <button class="ghost sm" id="btn-file">读取文件</button>
+        <button class="ghost sm" id="btn-clear">清空</button>
+      </div>
+    </div>
+    <div class="drop" id="drop">
+      <textarea id="text" placeholder="把任意长度的文字粘贴到这里 —— 长文、稿件、会议记录、课文都可以。
+也可以直接把 .txt / .md 文件拖进来。
+
+几千字、几万字都不需要分批：程序会自动切成小段分别合成，再按原顺序拼成一个完整的 MP3。"></textarea>
+      <div class="drop-mask" id="drop-mask"><span>松手即可读取文件</span></div>
+    </div>
+    <input type="file" id="file" accept=".txt,.md,.markdown,.text,.log,.csv,.srt" hidden>
+    <div class="stats" id="stats">
+      <span>0 字</span><span>·</span><span>0 段</span><span>·</span><span>预计 0 秒</span>
+    </div>
+  </section>
+
+  <aside class="panel side">
+    <div class="panel-head"><h2>朗读设置</h2></div>
+
+    <label class="field">
+      <span class="label">音色</span>
+      <input type="search" id="voice-search" placeholder="搜索：晓晓 / 粤语 / English / 男声…">
+    </label>
+    <div class="voices" id="voices"></div>
+
+    <label class="field">
+      <span class="label">语速 <b id="rate-val">+0%</b></span>
+      <input type="range" id="rate" min="-50" max="100" step="5" value="0">
+    </label>
+    <label class="field">
+      <span class="label">音量 <b id="volume-val">+0%</b></span>
+      <input type="range" id="volume" min="-50" max="50" step="5" value="0">
+    </label>
+    <label class="field">
+      <span class="label">音调 <b id="pitch-val">+0Hz</b></span>
+      <input type="range" id="pitch" min="-50" max="50" step="5" value="0">
+    </label>
+
+    <details class="adv">
+      <summary>高级设置</summary>
+      <label class="field">
+        <span class="label">每段字数 <b id="chunk-val">1200</b></span>
+        <input type="range" id="chunk" min="200" max="2000" step="100" value="1200">
+      </label>
+      <label class="field">
+        <span class="label">并发数 <b id="conc-val">3</b></span>
+        <input type="range" id="conc" min="1" max="6" step="1" value="3">
+      </label>
+      <p class="hint">并发越高越快，但过高可能被服务端限流。分段只是合成单位，不会影响成品音质。</p>
+    </details>
+  </aside>
+</main>
+
+<section class="panel actionbar">
+  <div class="progress-wrap">
+    <div class="progress"><div class="bar" id="bar"></div></div>
+    <div class="progress-text" id="progress-text">准备就绪</div>
+  </div>
+  <div class="action-buttons">
+    <button class="primary" id="btn-go">开始转换</button>
+    <button class="danger" id="btn-cancel" hidden>取消</button>
+  </div>
+</section>
+
+<section class="panel result" id="result" hidden>
+  <div class="panel-head">
+    <h2>成品</h2>
+    <div class="head-actions">
+      <button class="ghost sm" id="btn-open">在新标签页播放</button>
+      <button class="primary sm" id="btn-download">下载 MP3</button>
+    </div>
+  </div>
+  <audio id="player" controls preload="metadata"></audio>
+  <div class="stats" id="result-stats"></div>
+  <div class="note warn" id="result-note" hidden></div>
+</section>
+
+<details class="panel log-panel" id="log-panel">
+  <summary>运行日志 <span id="log-count"></span></summary>
+  <pre class="log" id="log"></pre>
+</details>
+
+<dialog id="about">
+  <h2>关于这个工具</h2>
+  <p><b>它是怎么工作的？</b>页面直接用浏览器去连 Edge 浏览器「朗读」功能所用的语音接口，把文字换成音频。所以<b>不需要安装任何东西，也没有服务器</b>——你打开网页就能用，所有拼接处理都在你自己的浏览器里完成。</p>
+  <p><b>字数真的不限吗？</b>你的文字会被自动切成小段分别合成，再按顺序拼成一个完整的 MP3。切分严格按标点层级进行，不会在句子中间断开。实际限制只取决于你电脑的内存：几万字完全没问题。</p>
+  <p><b>隐私。</b>文字会被发送到微软的语音服务用于合成（这是该接口的固有行为）；除此之外不经过任何第三方服务器，产出的音频也不会被上传。</p>
+  <p><b>需要联网吗？</b>需要。合成时必须能访问微软的语音服务。</p>
+  <p><b>常见问题。</b>如果提示某个音色不可用，多半是它已被服务端下架，换一个即可（程序也会自动回退到默认音色）。如果整体都失败了，通常是网络不通或被限流，稍后再试。</p>
+  <p class="hint">本页面的音频格式为 24kHz / 48kbps / 单声道 MP3，适合语音，体积小、兼容性好。</p>
+  <form method="dialog"><button class="primary">知道了</button></form>
+</dialog>
+
+<script>
+/*__VOICES__*/
+</script>
+<script>
+/*__APP__*/
+</script>
+</body>
+</html>

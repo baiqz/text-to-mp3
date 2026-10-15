@@ -1,0 +1,10 @@
+# 统一换行，避免不同系统上 diff 飘忽
+* text=auto eol=lf
+
+# 中文批处理是 GBK + CRLF 编码的，交给 git 转换会毁掉它，按二进制处理
+*.bat -text
+*.cmd -text
+
+# 音频样本是二进制
+*.mp3 binary
+*.png binary

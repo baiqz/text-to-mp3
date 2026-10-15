@@ -1,0 +1,76 @@
+{
+ "a": {
+  "bytes": 20880,
+  "probe": {
+   "frames": 145,
+   "bytes": 20880,
+   "duration": 3.48,
+   "sample_rate": 24000,
+   "bitrate": 48000,
+   "channels": 1,
+   "channels_name": "单声道",
+   "mpeg": "MPEG-2",
+   "layer": "Layer III",
+   "leading_junk": 0,
+   "trailing_junk": 0,
+   "clean_tail": true
+  }
+ },
+ "b": {
+  "bytes": 23184,
+  "probe": {
+   "frames": 161,
+   "bytes": 23184,
+   "duration": 3.864,
+   "sample_rate": 24000,
+   "bitrate": 48000,
+   "channels": 1,
+   "channels_name": "单声道",
+   "mpeg": "MPEG-2",
+   "layer": "Layer III",
+   "leading_junk": 0,
+   "trailing_junk": 0,
+   "clean_tail": true
+  }
+ },
+ "c": {
+  "bytes": 10800,
+  "probe": {
+   "frames": 75,
+   "bytes": 10800,
+   "duration": 1.8,
+   "sample_rate": 24000,
+   "bitrate": 48000,
+   "channels": 1,
+   "channels_name": "单声道",
+   "mpeg": "MPEG-2",
+   "layer": "Layer III",
+   "leading_junk": 0,
+   "trailing_junk": 0,
+   "clean_tail": true
+  }
+ },
+ "joined": {
+  "bytes": 54864,
+  "probe": {
+   "frames": 381,
+   "bytes": 54864,
+   "duration": 9.144,
+   "sample_rate": 24000,
+   "bitrate": 48000,
+   "channels": 1,
+   "channels_name": "单声道",
+   "mpeg": "MPEG-2",
+   "layer": "Layer III",
+   "leading_junk": 0,
+   "trailing_junk": 0,
+   "clean_tail": true
+  },
+  "sha256": "f0e9f372a275537c2a8674e9b66e56cb542ed212d36078dc6b6fdd9f25944fc2"
+ },
+ "id3": {
+  "bytes": 58,
+  "sha256": "06c02dbf5b3d89d8f4ce4dacfb4a2241507dce2efd605fc0338dc02db1ed1b8f"
+ },
+ "tagged_sha256": "7f3c32ae24ac645c8a235a3f99aca0133e86b39d31d20d3e68ba635f76bf6719"
+}
