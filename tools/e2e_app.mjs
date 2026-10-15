@@ -154,6 +154,10 @@ const browser = await launchBrowser(9334);
 const errors = [];
 const logs = [];
 
+// 设了 E2E_LIVE_URL 就直接打线上网址，跳过本地服务 —— 这能证明"部署出去的那份文件真的能跑"
+const LIVE = process.env.E2E_LIVE_URL || "";
+const PAGE_URL = LIVE || "http://127.0.0.1:5312/index.html";
+
 try {
   const cdp = new CDP(browser.ws);
   cdp.on((msg) => {
@@ -171,8 +175,8 @@ try {
   await cdp.send("Emulation.setDeviceMetricsOverride",
     { width: 1280, height: 1400, deviceScaleFactor: 1, mobile: false }, sessionId);
 
-  console.log("[1/4] 打开构建好的页面");
-  await cdp.send("Page.navigate", { url: "http://127.0.0.1:5312/index.html" }, sessionId);
+  console.log(`[1/4] 打开页面 ${PAGE_URL}`);
+  await cdp.send("Page.navigate", { url: PAGE_URL }, sessionId);
 
   const ready = Date.now() + 30000;
   for (;;) {
