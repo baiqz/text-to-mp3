@@ -75,6 +75,34 @@ CURATED: List[dict] = [
 CURATED_IDS = [v["id"] for v in CURATED]
 DEFAULT_VOICE = "zh-CN-XiaoxiaoNeural"
 
+# ---------------------------------------------------------------------------
+# 实测结论（2026-10-15，用真实浏览器逐个合成验证，不是靠查文档）
+# ---------------------------------------------------------------------------
+# 「服务端清单里有」≠「能用」，反过来「清单里没有」也≠「不能用」。两套纠偏表：
+
+# 1) voices/list 不返回、但服务端确实还能合成的音色 —— 必须放行，否则会误杀
+#    （云泽那批是"看清单办事"踩的坑；晓萱则是反向的坑）
+VERIFIED_ALIVE_EXTRA: Dict[str, dict] = {
+    "zh-CN-XiaoxuanNeural": {
+        "name": "晓萱", "gender": "女", "locale": "zh-CN", "lang": "中文",
+        "tone": "实测可用（不在官方清单）", "tag": "扩展",
+    },
+}
+
+# 2) 服务端明确回 "Unsupported voice" 的音色 —— 已经从声库里消失
+#    即使它们还躺在精选清单里（历史快照），也必须剔除，否则用户选了必然失败
+VERIFIED_DEAD = {
+    "zh-CN-YunzeNeural",           # 云泽
+    "zh-CN-YunfengNeural",         # 云枫
+    "zh-CN-YunhaoNeural",          # 云皓
+    "zh-CN-YunyeNeural",           # 云野
+    "zh-CN-XiaomoNeural",          # 晓墨
+    "zh-CN-XiaohanNeural",         # 晓涵
+    "zh-CN-XiaoruiNeural",         # 晓睿
+    "zh-CN-XiaozhenNeural",        # 晓甄
+    "zh-CN-XiaomengNeural",        # 晓梦
+}
+
 
 def _fetch_all() -> List[dict]:
     """从微软拉取全量音色。需要联网,失败时抛异常由调用方兜底。"""
@@ -141,16 +169,23 @@ def voice_ids() -> set:
 
 
 def live_voice_ids() -> set:
-    """服务端**当前真的存在**的音色 id 集合(取不到时返回空集)。
+    """服务端**当前真的能用**的音色 id 集合(取不到时返回空集)。
 
     精选清单是人工整理的快照,服务端会不打招呼地下架音色(例如云泽、
     晓墨、云枫等一批中文音色已经消失)。所以判断"能不能用"必须以这份
     实时清单为准,否则用户会选中一个必挂的音色。
+
+    但清单本身也有两个方向的偏差,用实测表纠偏:
+      * VERIFIED_ALIVE_EXTRA —— 清单里没有却仍能合成(晓萱),要放行;
+      * VERIFIED_DEAD        —— 清单里可能还有、实际已拒绝,要剔除。
     """
     try:
-        return {v["id"] for v in all_voices() if v.get("id")}
+        ids = {v["id"] for v in all_voices() if v.get("id")}
     except Exception:                              # noqa: BLE001
-        return set()
+        ids = set()
+    if not ids:
+        return set()                               # 拿不到清单时不纠偏,交给调用方兜底
+    return (ids | set(VERIFIED_ALIVE_EXTRA)) - VERIFIED_DEAD
 
 
 def is_valid_voice(vid: str) -> bool:
@@ -166,7 +201,9 @@ def is_valid_voice(vid: str) -> bool:
     if known:
         return vid in known                  # 在线时以服务端清单为准（唯一权威）
     # 拿不到动态列表时（离线），退回精选清单与命名惯例
-    if vid in CURATED_IDS:
+    if vid in VERIFIED_DEAD:                 # 实测已下架的，离线也不放行
+        return False
+    if vid in CURATED_IDS or vid in VERIFIED_ALIVE_EXTRA:
         return True
     return bool(re.fullmatch(r"[a-z]{2,3}-[A-Za-z]{2,4}-[A-Za-z]+Neural", vid))
 
@@ -179,9 +216,23 @@ def catalog() -> Dict[str, object]:
     if known:
         curated = [v for v in CURATED if v["id"] in known]
         missing = [v["id"] for v in CURATED if v["id"] not in known]
+
+    # 全量列表补上"清单外但实测可用"的音色，否则在搜索里也找不到它们
+    allv = all_voices()
+    have = {v["id"] for v in allv}
+    for vid, meta in VERIFIED_ALIVE_EXTRA.items():
+        if vid in have or vid in VERIFIED_DEAD:
+            continue
+        allv = allv + [{
+            "id": vid, "name": meta["name"], "gender": meta["gender"],
+            "locale": meta["locale"], "lang": meta["lang"],
+            "tone": meta["tone"], "tag": meta["tag"], "extra": True,
+        }]
+
     return {
         "curated": curated,
         "default": DEFAULT_VOICE,
-        "all": all_voices(),
+        "all": allv,
         "missing": missing,
+        "extra": sorted(VERIFIED_ALIVE_EXTRA.keys()),
     }

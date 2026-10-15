@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>音色可用性巡检</title>
+<style>
+  body{font:13px/1.6 system-ui,sans-serif;background:#14161a;color:#e8eaf0;padding:20px}
+  pre{background:#0d0f12;padding:12px;border-radius:8px;white-space:pre-wrap}
+</style>
+</head>
+<body>
+<h1>音色可用性巡检</h1>
+<pre id="log">启动中…</pre>
+<script type="module">
+import { synthesize } from "../../src/tts.js";
+import { probe } from "../../src/mp3.js";
+
+const TEXT = "这是一段测试音色用的文字。";
+const CONC = 3;
+
+// 前 14 个是官方清单里的中文音色（控制组，必须全部可用）
+const BASELINE = [
+  "zh-CN-XiaoxiaoNeural","zh-CN-XiaoyiNeural","zh-CN-YunjianNeural","zh-CN-YunxiNeural",
+  "zh-CN-YunxiaNeural","zh-CN-YunyangNeural","zh-CN-liaoning-XiaobeiNeural","zh-CN-shaanxi-XiaoniNeural",
+  "zh-HK-HiuGaaiNeural","zh-HK-HiuMaanNeural","zh-HK-WanLungNeural",
+  "zh-TW-HsiaoChenNeural","zh-TW-HsiaoYuNeural","zh-TW-YunJheNeural",
+];
+
+const CANDIDATES = [
+  ...BASELINE,
+  // ===== 用户点名要的：云泽，以及同批被下架的老中文音色 =====
+  "zh-CN-YunzeNeural","zh-CN-YunfengNeural","zh-CN-YunhaoNeural","zh-CN-YunyeNeural",
+  "zh-CN-XiaomoNeural","zh-CN-XiaohanNeural","zh-CN-XiaoruiNeural","zh-CN-XiaozhenNeural",
+  "zh-CN-XiaomengNeural","zh-CN-XiaoxuanNeural","zh-CN-XiaoyanNeural","zh-CN-XiaotongNeural",
+  "zh-CN-XiaobeiNeural","zh-CN-XiaoniNeural","zh-CN-XiaoxuanNeural2","zh-CN-YunzeNeural2",
+  // ===== 中文多语言 / 新一批 =====
+  "zh-CN-XiaoxiaoMultilingualNeural","zh-CN-XiaochenMultilingualNeural","zh-CN-XiaoyuMultilingualNeural",
+  "zh-CN-YunfanMultilingualNeural","zh-CN-YunyiMultilingualNeural","zh-CN-YunxiaoMultilingualNeural",
+  "zh-CN-XiaoxiaoDragonHorseNeural","zh-CN-XiaoxiaoDialectsNeural","zh-CN-Xiaoxiao2Neural",
+  "zh-CN-XiaoshuangNeural","zh-CN-XiaomanNeural","zh-CN-XiaoliNeural","zh-CN-XiaoleiNeural",
+  "zh-CN-XiaoyueNeural","zh-CN-XiaojingNeural","zh-CN-XiayuNeural","zh-CN-XiaochenNeural",
+  "zh-CN-XiaoyuNeural","zh-CN-XiaofanNeural","zh-CN-YunhanNeural","zh-CN-YunlinNeural",
+  "zh-CN-XiaoxiaoNeuralMultilingual","zh-CN-XiaoxiaoHDNeural","zh-CN-YunxiHDNeural",
+  // ===== 中文方言（Azure 官方有的）=====
+  "zh-CN-henan-YundengNeural","zh-CN-shandong-YunxiangNeural","zh-CN-sichuan-YunxiNeural",
+  "zh-CN-anhui-XiaomengNeural","zh-CN-gansu-YunqiNeural","zh-CN-guizhou-YunmeiNeural",
+  "zh-CN-hubei-YunlinNeural","zh-CN-hunan-YunxiNeural","zh-CN-jiangxi-YunxiNeural",
+  "zh-CN-shanxi-YunxiNeural","zh-CN-tianjin-YunxiNeural","zh-CN-yunnan-YunxiNeural",
+  "zh-CN-zhejiang-YunxiNeural","zh-CN-guangdong-YunxiNeural","zh-CN-fujian-YunxiNeural",
+  "zh-CN-wu-XiaoxiaoNeural","zh-CN-minnan-XiaoxiaoNeural","zh-CN-hakka-XiaoxiaoNeural",
+  "zh-CN-gan-XiaoxiaoNeural","zh-CN-jin-XiaoxiaoNeural","zh-CN-xiang-XiaoxiaoNeural",
+  // ===== 其他语种多语言音色（上一轮实测有货）=====
+  "en-US-AvaMultilingualNeural","en-US-AndrewMultilingualNeural","en-US-EmmaMultilingualNeural",
+  "en-US-BrianMultilingualNeural","en-US-AriaMultilingualNeural","en-US-JennyMultilingualNeural",
+  "en-US-GuyMultilingualNeural","en-US-DavisMultilingualNeural","en-US-NancyMultilingualNeural",
+  "ja-JP-NanamiMultilingualNeural","ko-KR-SunHiMultilingualNeural","fr-FR-VivienneMultilingualNeural",
+  "de-DE-SeraphinaMultilingualNeural","es-ES-ElviraMultilingualNeural","pt-BR-FranciscaMultilingualNeural",
+];
+
+const logEl = document.getElementById("log");
+const lines = [];
+const say = (s) => { lines.push(s); logEl.textContent = lines.join("\n"); window.__status = s; };
+
+const results = new Array(CANDIDATES.length).fill(null);
+let cursor = 0, finished = 0;
+
+async function testOne(id) {
+  const t0 = performance.now();
+  try {
+    const data = await synthesize({ text: TEXT, voice: id, timeoutMs: 25000 });
+    const info = probe(data);
+    if (!info.frames) return { id, verdict: "空数据", ms: Math.round(performance.now() - t0), note: `${data.length}B 无有效帧` };
+    return { id, verdict: "可用", ms: Math.round(performance.now() - t0),
+      note: `${info.frames}帧/${info.duration.toFixed(2)}s` };
+  } catch (e) {
+    const cls = e.constructor?.name || "Error";
+    return { id, verdict: cls === "VoiceUnsupported" ? "不支持" : "失败",
+      ms: Math.round(performance.now() - t0), note: String(e.message).slice(0, 60) };
+  }
+}
+
+say(`巡检 ${CANDIDATES.length} 个候选（并发 ${CONC}）…`);
+
+await Promise.all(Array.from({ length: CONC }, async () => {
+  for (;;) {
+    const i = cursor++;
+    if (i >= CANDIDATES.length) return;
+    const r = await testOne(CANDIDATES[i]);
+    results[i] = r;
+    finished += 1;
+    window.__status = `${finished}/${CANDIDATES.length}`;
+  }
+}));
+
+const ok = results.filter((r) => r.verdict === "可用");
+const extra = ok.filter((r) => !BASELINE.includes(r.id));
+const zhExtra = extra.filter((r) => r.id.startsWith("zh"));
+const missingBaseline = BASELINE.filter((id) => results.find((r) => r.id === id)?.verdict !== "可用");
+
+// --- 紧凑结论：放在最后，方便从控制台末尾直接读到 ---
+say("");
+say(`结论 候选${CANDIDATES.length} 可用${ok.length} 清单外可用${extra.length} 控制组缺失${missingBaseline.length}`);
+say(`控制组缺失: ${missingBaseline.join(",") || "无"}`);
+say(`云泽: ${results.find((r) => r.id === "zh-CN-YunzeNeural")?.verdict} ${results.find((r) => r.id === "zh-CN-YunzeNeural")?.note}`);
+say(`中文新增(${zhExtra.length}): ${zhExtra.map((r) => r.id).join(",") || "无"}`);
+say(`其他新增(${extra.length - zhExtra.length}): ${extra.filter((r) => !r.id.startsWith("zh")).map((r) => r.id).join(",") || "无"}`);
+
+window.__result = {
+  total: CANDIDATES.length, alive: ok.length, extraAlive: extra.length,
+  missingBaseline,
+  yunze: results.find((r) => r.id === "zh-CN-YunzeNeural"),
+  zhExtra: zhExtra.map((r) => r.id),
+  otherExtra: extra.filter((r) => !r.id.startsWith("zh")).map((r) => r.id),
+  all: results.map((r) => ({ id: r.id, v: r.verdict, d: r.note })),
+};
+window.__done = true;
+</script>
+</body>
+</html>

@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>风格 SSML 写法探测</title>
+<style>body{font:13px/1.6 system-ui,sans-serif;background:#14161a;color:#e8eaf0;padding:20px}pre{background:#0d0f12;padding:12px;border-radius:8px;white-space:pre-wrap}</style>
+</head>
+<body><h1>风格 SSML 各种写法（看哪种不被拒）</h1><pre id="log">启动中…</pre>
+<script type="module">
+import { generateSecMsGec, SEC_MS_GEC_VERSION, TRUSTED_CLIENT_TOKEN } from "../../src/token.js";
+import { probe } from "../../src/mp3.js";
+
+const TEXT = "今天天气不错，我们一起出去走走吧。";
+const VOICE = "zh-CN-XiaoxiaoNeural";
+
+/** 用任意 SSML 直连服务端（绕过引擎自带的 SSML 构造） */
+function rawSynth(ssml) {
+  const url = `wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1`
+    + `?TrustedClientToken=${TRUSTED_CLIENT_TOKEN}&ConnectionId=${crypto.randomUUID().replace(/-/g, "")}`
+    + `&Sec-MS-GEC=${generateSecMsGec()}&Sec-MS-GEC-Version=${SEC_MS_GEC_VERSION}`;
+  return new Promise((resolve, reject) => {
+    const ws = new WebSocket(url);
+    ws.binaryType = "arraybuffer";
+    const pieces = []; let n = 0;
+    const t = setTimeout(() => { try { ws.close(); } catch {} reject(new Error("超时")); }, 25000);
+    ws.onopen = () => {
+      ws.send(`X-Timestamp:Mon Jan 1 2024 00:00:00 GMT+0000 (Coordinated Universal Time)\r\n`
+        + `Content-Type:application/json; charset=utf-8\r\nPath:speech.config\r\n\r\n`
+        + `{"context":{"synthesis":{"audio":{"metadataoptions":{"sentenceBoundaryEnabled":"false","wordBoundaryEnabled":"false"},`
+        + `"outputFormat":"audio-24khz-48kbitrate-mono-mp3"}}}}\r\n`);
+      ws.send(`X-RequestId:${crypto.randomUUID().replace(/-/g, "")}\r\nContent-Type:application/ssml+xml\r\n`
+        + `X-Timestamp:Mon Jan 1 2024 00:00:00 GMT+0000 (Coordinated Universal Time)Z\r\nPath:ssml\r\n\r\n` + ssml);
+    };
+    ws.onmessage = (ev) => {
+      if (typeof ev.data === "string") {
+        if (/turn\.end/.test(ev.data)) {
+          clearTimeout(t);
+          n ? resolve(new Uint8Array(pieces.reduce((a, p) => a.concat([...p]), []))) : reject(new Error("无音频"));
+          try { ws.close(); } catch {}
+        }
+        return;
+      }
+      const b = new Uint8Array(ev.data);
+      if (b.length < 4) return;
+      const hl = (b[0] << 8) | b[1];
+      if (hl > b.length) return;
+      const head = new TextDecoder().decode(b.subarray(0, hl));
+      if (!head.includes("Path:audio")) return;
+      const p = b.subarray(hl + 2);
+      if (p.length) { pieces.push(p.slice()); n += p.length; }
+    };
+    ws.onerror = () => { clearTimeout(t); reject(new Error("连接失败")); };
+    ws.onclose = (e) => { if (!n) { clearTimeout(t); reject(new Error(`关闭 ${e.code} ${e.reason || ""}`)); } };
+  });
+}
+
+const body = `<prosody pitch='+0Hz' rate='+0%' volume='+0%'>${TEXT}</prosody>`;
+const CASES = [
+  ["基准（无风格）", `<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='en-US'>`
+    + `<voice name='${VOICE}'>${body}</voice></speak>`],
+  ["mstts https", `<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' `
+    + `xmlns:mstts='https://www.w3.org/2001/mstts' xml:lang='en-US'><voice name='${VOICE}'>`
+    + `<mstts:express-as style='cheerful'>${body}</mstts:express-as></voice></speak>`],
+  ["mstts http", `<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' `
+    + `xmlns:mstts='http://www.w3.org/2001/mstts' xml:lang='en-US'><voice name='${VOICE}'>`
+    + `<mstts:express-as style='cheerful'>${body}</mstts:express-as></voice></speak>`],
+  ["mstts 不声明命名空间", `<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='en-US'>`
+    + `<voice name='${VOICE}'><mstts:express-as style='cheerful'>${body}</mstts:express-as></voice></speak>`],
+  ["仅 role 属性", `<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' `
+    + `xmlns:mstts='https://www.w3.org/2001/mstts' xml:lang='en-US'><voice name='${VOICE}'>`
+    + `<mstts:express-as role='Girl'>${body}</mstts:express-as></voice></speak>`],
+  ["speak 带 mstts + xml:lang=zh-CN", `<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' `
+    + `xmlns:mstts='https://www.w3.org/2001/mstts' xml:lang='zh-CN'><voice name='${VOICE}'>`
+    + `<mstts:express-as style='gentle'>${body}</mstts:express-as></voice></speak>`],
+  ["express-as 自带 mstts 前缀声明在 voice 上", `<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='en-US'>`
+    + `<voice name='${VOICE}'><mstts:express-as xmlns:mstts='https://www.w3.org/2001/mstts' style='gentle'>${body}</mstts:express-as></voice></speak>`],
+];
+
+const logEl = document.getElementById("log"); const lines = [];
+const say = (s) => { lines.push(s); logEl.textContent = lines.join("\n"); window.__status = s; };
+const out = [];
+for (const [name, ssml] of CASES) {
+  try {
+    const data = await rawSynth(ssml);
+    const info = probe(data);
+    out.push({ name, verdict: "通过", note: `${data.length}B ${info.frames}帧` });
+    say(`通过    ${name}   ${data.length}B ${info.frames}帧`);
+  } catch (e) {
+    out.push({ name, verdict: "被拒", note: String(e.message).slice(0, 70) });
+    say(`被拒    ${name}   ${String(e.message).slice(0, 70)}`);
+  }
+}
+window.__result = { out };
+window.__done = true;
+</script></body></html>

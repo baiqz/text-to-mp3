@@ -6,6 +6,8 @@
 
   const el = {
     count: $("voice-count"), search: $("voice-search"), list: $("voices"),
+    filters: $("voice-filters"), shown: $("voice-shown"), presets: $("presets"),
+    more: $("voice-more"),
     text: $("text"), stats: $("stats"), drop: $("drop"), file: $("file"),
     rate: $("rate"), volume: $("volume"), pitch: $("pitch"),
     chunk: $("chunk"), conc: $("conc"),
@@ -23,9 +25,13 @@
     lastBlob: null,
     lastUrl: null,
     logs: 0,
+    filter: "all",
+    limit: 26,          // 不搜索时先列这么多，可点「显示更多」继续加
   };
 
   /* ---------- 设置持久化 ---------- */
+  const fmtSigned = (v, unit) => `${v >= 0 ? "+" : ""}${Math.round(v)}${unit}`;
+
   function loadSettings() {
     try {
       const s = JSON.parse(localStorage.getItem(LS_KEY) || "{}");
@@ -47,26 +53,54 @@
   }
 
   /* ---------- 声库 ---------- */
-  const zhFirst = (v) => (v.locale.startsWith("zh") ? 0 : 1);
+  /** 排序：中文（含方言）→ 多语言 → 其他语言，组内按名称排 */
+  const zhFirst = (v) => {
+    const c = classify(v);
+    return c === "zh" || c === "dialect" ? 0 : c === "multi" ? 1 : 2;
+  };
 
-  function renderVoices(keyword = "") {
+  const DIALECT_LOCALES = ["zh-CN-liaoning", "zh-CN-shaanxi", "zh-HK"];
+  /** 音色归类：中文 / 方言 / 多语言 / 其他语言
+   *  注意：官方多语言音色的 locale 是 en-US / fr-FR 这类真实语言码，
+   *  只能靠 id 里的 MultilingualNeural 识别，不能看 locale。 */
+  function classify(v) {
+    if (/Multilingual/i.test(v.id)) return "multi";
+    if (DIALECT_LOCALES.includes(v.locale)) return "dialect";
+    if (v.locale.startsWith("zh")) return "zh";
+    return "other";
+  }
+
+  const aliveVoices = () => VOICES.voices.filter((v) => !v.dead);
+
+  function visibleVoices(keyword) {
     const kw = keyword.trim().toLowerCase();
-    const items = VOICES.voices.filter((v) => {
-      if (v.dead) return false;
+    return aliveVoices().filter((v) => {
+      if (state.filter !== "all" && classify(v) !== state.filter) return false;
       if (!kw) return true;
       return (v.id + " " + v.name + " " + v.localeName + " " + v.locale + " " +
-        (v.gender === "Female" ? "女声 female" : "男声 male")).toLowerCase().includes(kw);
+        (v.gender === "Female" ? "女声 female" : "男声 male") +
+        (v.extra ? " 扩展 extra" : "") + " " + (v.note || "")).toLowerCase().includes(kw);
     }).sort((a, b) => zhFirst(a) - zhFirst(b) || a.name.localeCompare(b.name, "zh"));
+  }
 
-    const max = kw ? 60 : 26;
+  function renderVoices(keyword = "") {
+    const items = visibleVoices(keyword);
+    const max = state.limit;
+
     el.list.replaceChildren();
     for (const v of items.slice(0, max)) {
       const row = document.createElement("div");
       row.className = "voice" + (v.id === state.voice ? " on" : "");
-      row.title = v.id;
+      row.title = v.note ? `${v.id}\n${v.note}` : v.id;
       const name = document.createElement("span");
       name.className = "vname";
       name.textContent = v.name;
+      if (v.extra) {
+        const tag = document.createElement("b");
+        tag.className = "vtag";
+        tag.textContent = "扩展";
+        name.append(" ", tag);
+      }
       const meta = document.createElement("span");
       meta.className = "vmeta";
       meta.textContent = `${v.localeName} · ${v.gender === "Female" ? "女声" : "男声"}`;
@@ -78,18 +112,74 @@
       });
       el.list.append(row);
     }
+
     if (!items.length) {
       const empty = document.createElement("div");
       empty.className = "voice";
       empty.textContent = "没有匹配的音色";
       el.list.append(empty);
-    } else if (items.length > max) {
-      const more = document.createElement("div");
-      more.className = "voice";
-      more.style.color = "var(--dim)";
-      more.textContent = `…还有 ${items.length - max} 个，继续输入可缩小范围`;
-      el.list.append(more);
     }
+
+    // 「显示更多」放在滚动区外面，否则藏在 26 条之后根本看不见
+    const rest = items.length - Math.min(max, items.length);
+    el.more.hidden = rest <= 0;
+    if (rest > 0) {
+      el.more.textContent = `显示更多（还有 ${rest} 个）`;
+      el.more.onclick = () => {
+        state.limit += 80;
+        renderVoices(el.search.value);
+      };
+    }
+
+    el.shown.textContent = items.length
+      ? `已显示 ${Math.min(max, items.length)} / ${items.length} 个`
+      : "无匹配";
+  }
+
+  /* ---------- 一键风格 ----------
+   * 服务端不接受 SSML 的情感风格（mstts:express-as 会被判为非法 SSML），
+   * 所以"风格"只能由「换音色 + 调语速/音调」组合出来。
+   *
+   * 注意：这里的数值必须是滑块步长(5)的整数倍，否则滑块会静默取整，
+   * 按钮上标注的参数就和实际生效的不一致了。
+   */
+  const PRESETS = [
+    { name: "深夜电台", voice: "zh-CN-YunjianNeural", rate: -15, volume: -5, pitch: -10 },
+    { name: "纪录片解说", voice: "zh-CN-YunjianNeural", rate: -10, volume: 5, pitch: 0 },
+    { name: "新闻播报", voice: "zh-CN-YunyangNeural", rate: 5, volume: 5, pitch: 0 },
+    { name: "睡前故事", voice: "zh-CN-XiaoxiaoNeural", rate: -15, volume: 0, pitch: -5 },
+    { name: "温柔女声", voice: "zh-CN-XiaoyiNeural", rate: -10, volume: 0, pitch: -5 },
+    { name: "活力带货", voice: "zh-CN-XiaoxuanNeural", rate: 20, volume: 5, pitch: 5 },
+    { name: "童声朗读", voice: "zh-CN-YunxiaNeural", rate: -5, volume: 0, pitch: 10 },
+    { name: "粤语旁白", voice: "zh-HK-WanLungNeural", rate: -5, volume: 0, pitch: -5 },
+  ];
+
+  function renderPresets() {
+    const known = new Set(aliveVoices().map((v) => v.id));
+    el.presets.replaceChildren();
+    for (const p of PRESETS) {
+      if (!known.has(p.voice)) continue;              // 预设音色若被下架就自动隐藏
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "chip";
+      b.textContent = p.name;
+      b.title = `音色 ${p.voice}，语速 ${p.rate >= 0 ? "+" : ""}${p.rate}%，` +
+        `音量 ${p.volume >= 0 ? "+" : ""}${p.volume}%，音调 ${p.pitch >= 0 ? "+" : ""}${p.pitch}Hz`;
+      b.addEventListener("click", () => applyPreset(p));
+      el.presets.append(b);
+    }
+  }
+
+  function applyPreset(p) {
+    state.voice = p.voice;
+    el.rate.value = String(p.rate);
+    el.volume.value = String(p.volume);
+    el.pitch.value = String(p.pitch);
+    syncOutputs();
+    saveSettings();
+    state.limit = 26;
+    renderVoices(el.search.value);
+    log(`已套用风格「${p.name}」：${p.voice} · 语速 ${fmtSigned(p.rate, "%")} · 音调 ${fmtSigned(p.pitch, "Hz")}`);
   }
 
   /* ---------- 文本统计 ---------- */
@@ -237,20 +327,40 @@
   }
 
   /* ---------- 事件绑定 ---------- */
+  /** 滑块数值 → 标签文案。抽出来是为了「一键风格」也能刷新标签 */
+  const OUTPUTS = [];
+
+  function syncOutputs() {
+    for (const { input, out, fmt } of OUTPUTS) out.textContent = fmt(Number(input.value));
+  }
+
   function bind() {
-    el.search.addEventListener("input", () => renderVoices(el.search.value));
+    el.search.addEventListener("input", () => {
+      state.limit = 26;              // 换关键词重新收起列表
+      renderVoices(el.search.value);
+    });
     el.text.addEventListener("input", refreshStats);
 
+    el.filters.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-filter]");
+      if (!btn) return;
+      state.filter = btn.dataset.filter;
+      state.limit = 26;
+      for (const b of el.filters.querySelectorAll(".chip")) b.classList.toggle("on", b === btn);
+      renderVoices(el.search.value);
+    });
+
     for (const [input, label, fmt] of [
-      [el.rate, "rate-val", (v) => `${v >= 0 ? "+" : ""}${v}%`],
-      [el.volume, "volume-val", (v) => `${v >= 0 ? "+" : ""}${v}%`],
-      [el.pitch, "pitch-val", (v) => `${v >= 0 ? "+" : ""}${v}Hz`],
+      [el.rate, "rate-val", (v) => fmtSigned(v, "%")],
+      [el.volume, "volume-val", (v) => fmtSigned(v, "%")],
+      [el.pitch, "pitch-val", (v) => fmtSigned(v, "Hz")],
     ]) {
       const out = $(label);
-      const sync = () => { out.textContent = fmt(Number(input.value)); };
-      input.addEventListener("input", () => { sync(); saveSettings(); });
-      sync();
+      OUTPUTS.push({ input, out, fmt });
+      input.addEventListener("input", () => { syncOutputs(); saveSettings(); });
     }
+    syncOutputs();
+
     for (const [input, label] of [[el.chunk, "chunk-val"], [el.conc, "conc-val"]]) {
       const out = $(label);
       const sync = () => { out.textContent = input.value; };
@@ -340,8 +450,20 @@
   renderVoices();
   refreshStats();
   bind();
-  el.count.textContent =
-    `${VOICES.voices.filter((v) => !v.dead).length} 个音色 · 中文 ${VOICES.voices.filter((v) => !v.dead && v.locale.startsWith("zh")).length} 个`;
-  log(`声库已载入（${VOICES.voices.length} 个，实测于 ${VOICES.testedAt}）`);
+  renderPresets();
+
+  const alive = aliveVoices();
+  const zhList = alive.filter((v) => v.locale.startsWith("zh"));
+  const extraList = alive.filter((v) => v.extra);
+  el.count.textContent = `${alive.length} 个音色 · 中文 ${zhList.length} 个`;
+  el.count.title =
+    `官方声库 ${alive.length - extraList.length} 个` +
+    (extraList.length ? ` ＋ 实测可用扩展 ${extraList.length} 个` : "") +
+    `，覆盖 ${new Set(alive.map((v) => v.locale)).size} 种语言与地区。` +
+    `点击「中文 / 方言 / 多语言」可按类别筛选。`;
+  log(`声库已载入：共 ${alive.length} 个音色（中文 ${zhList.length} 个），官方清单实测于 ${VOICES.testedAt}`);
+  if (extraList.length) {
+    log(`其中 ${extraList.length} 个不在官方清单里但实测可用：${extraList.map((v) => `${v.name}(${v.id})`).join("、")}`);
+  }
   window.__uiReady = true;
 })();

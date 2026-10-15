@@ -53,10 +53,23 @@
     <div class="panel-head"><h2>朗读设置</h2></div>
 
     <label class="field">
-      <span class="label">音色</span>
+      <span class="label">音色 <span class="dim" id="voice-shown"></span></span>
       <input type="search" id="voice-search" placeholder="搜索：晓晓 / 粤语 / English / 男声…">
     </label>
+    <div class="filters" id="voice-filters">
+      <button type="button" class="chip on" data-filter="all">全部</button>
+      <button type="button" class="chip" data-filter="zh">中文</button>
+      <button type="button" class="chip" data-filter="dialect">方言</button>
+      <button type="button" class="chip" data-filter="multi">多语言</button>
+      <button type="button" class="chip" data-filter="other">其他语言</button>
+    </div>
     <div class="voices" id="voices"></div>
+    <button type="button" class="more-btn" id="voice-more" hidden>显示更多</button>
+
+    <div class="field">
+      <span class="label">一键风格 <span class="dim">音色＋语速＋音调的组合</span></span>
+      <div class="presets" id="presets"></div>
+    </div>
 
     <label class="field">
       <span class="label">语速 <b id="rate-val">+0%</b></span>
@@ -121,6 +134,7 @@
   <p><b>字数真的不限吗？</b>你的文字会被自动切成小段分别合成，再按顺序拼成一个完整的 MP3。切分严格按标点层级进行，不会在句子中间断开。实际限制只取决于你电脑的内存：几万字完全没问题。</p>
   <p><b>隐私。</b>文字会被发送到微软的语音服务用于合成（这是该接口的固有行为）；除此之外不经过任何第三方服务器，产出的音频也不会被上传。</p>
   <p><b>需要联网吗？</b>需要。合成时必须能访问微软的语音服务。</p>
+  <p><b>音色是从哪来的？</b>默认是接口官方声库（322 个，覆盖 142 种语言与地区）。此外还有几个「官方清单里没有、但实测仍可合成」的音色，也在列表中标了出来。反过来，服务端会不定期下架音色（例如中文的<b>云泽</b>、晓墨、晓枫等一批已经消失）——这类音色选不了也发不出声音，所以没有列进列表；如果某个音色哪天失效了，程序会自动换默认音色继续，不会整篇失败。</p>
   <p><b>常见问题。</b>如果提示某个音色不可用，多半是它已被服务端下架，换一个即可（程序也会自动回退到默认音色）。如果整体都失败了，通常是网络不通或被限流，稍后再试。</p>
   <p class="hint">本页面的音频格式为 24kHz / 48kbps / 单声道 MP3，适合语音，体积小、兼容性好。</p>
   <form method="dialog"><button class="primary">知道了</button></form>

@@ -2253,10 +2253,20 @@
    "locale": "zu-ZA",
    "localeName": "zu-ZA",
    "gender": "Male"
+  },
+  {
+   "id": "zh-CN-XiaoxuanNeural",
+   "name": "晓萱",
+   "locale": "zh-CN",
+   "localeName": "普通话",
+   "gender": "Female",
+   "extra": true,
+   "note": "不在官方清单里，实测可用 · 女声，干练利落"
   }
  ],
  "dead": [],
  "testedAt": "2026-10-15",
  "testedCount": 14,
- "aliveCount": 14
+ "aliveCount": 14,
+ "extraTestedAt": "2026-10-15"
 }

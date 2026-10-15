@@ -529,7 +529,12 @@ def quick_hint(limit: int = 2) -> str:
 
     direct = probe_direct(timeout=6.0)
     if direct.get("ok"):
-        return "网络诊断：网络连通正常，问题可能出在 edge-tts 版本或系统时间"
+        # 网络明明是通的，就别再甩"请检查网络"了。按实测概率给排查顺序：
+        # 最常见的真凶是音色被服务端下架（不报错、只是没有音频），其次才是版本/时间。
+        return ("网络诊断：网络连通正常，所以多半不是网络问题 —— "
+                "先换一个音色（服务端会不打招呼地下架音色，用已下架的音色必然没有音频）；"
+                "若换音色仍失败，再升级 edge-tts（令牌版本过期会返回 403），"
+                "最后检查系统时间是否偏差过大")
 
     alive = []
     for label, url in [("系统代理", system_proxy())] + list(env_proxies().items()):

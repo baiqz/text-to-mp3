@@ -57,6 +57,23 @@ try {
       /不支持|unsupported voice|没有返回音频/i.test(e.message), e.message);
   }
 
+  // --- 2b. 官方清单外、实测可用的音色必须真的出声（晓萱是 2026-10-15 逐个试出来的）---
+  let extraRaw = null;
+  try {
+    extraRaw = await synthesize({ text: "晓萱音色测试，一二三四五。", voice: "zh-CN-XiaoxuanNeural" });
+    const ei = probe(extraRaw);
+    check("清单外的扩展音色能合成", ei.frames > 5, `${ei.frames} 帧 / ${extraRaw.length} 字节`);
+  } catch (e) {
+    check("清单外的扩展音色能合成", false, e.message);
+  }
+  // 服务端真的下架的音色，请求应当被明确拒绝（而不是静默返回空）
+  try {
+    await synthesize({ text: "测试。", voice: "zh-CN-XiaomengNeural" });
+    check("确认已下架的晓梦被拒绝", false, "居然返回了音频");
+  } catch (e) {
+    check("确认已下架的晓梦被拒绝", /不支持|unsupported/i.test(e.message), e.message);
+  }
+
   // --- 3. 完整任务：多段切分 + 并发 + 拼接 ---
   const text = ("这是一次完整的端到端验证，用来确认长文本会被正确切分、并发合成，"
     + "再按顺序拼接成一个可以播放的文件。\n\n").repeat(14);
@@ -100,6 +117,12 @@ try {
   const cleanOnly = await decode(raw);
   check("不含标签的原始音频也能解码", cleanOnly !== null,
     cleanOnly === null ? "解码失败" : `${cleanOnly.toFixed(2)} 秒`);
+
+  if (extraRaw) {
+    const extraDecoded = await decode(extraRaw);
+    check("扩展音色的音频能被浏览器解码", extraDecoded !== null,
+      extraDecoded === null ? "解码失败" : `${extraDecoded.toFixed(2)} 秒`);
+  }
 
   const failed = checks.filter((c) => !c.ok);
   say("");

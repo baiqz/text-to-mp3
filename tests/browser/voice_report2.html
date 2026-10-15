@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>音色巡检 · 第二轮</title>
+<style>body{font:13px/1.6 system-ui,sans-serif;background:#14161a;color:#e8eaf0;padding:20px}pre{background:#0d0f12;padding:12px;border-radius:8px;white-space:pre-wrap}</style>
+</head>
+<body>
+<h1>音色巡检 · 第二轮（Azure 官方清单里的其余中文音色）</h1>
+<pre id="log">启动中…</pre>
+<script type="module">
+import { synthesize } from "../../src/tts.js";
+import { probe } from "../../src/mp3.js";
+
+const TEXT = "这是一段测试音色用的文字。";
+const CONC = 3;
+
+const CANDIDATES = [
+  // 控制组
+  "zh-CN-XiaoxiaoNeural","zh-CN-XiaoxuanNeural",
+  // Azure 官方中文清单里尚未验证的
+  "zh-CN-XiaoqiuNeural","zh-CN-XiaorouNeural","zh-CN-XiaorouNeural1","zh-CN-XiaoyouNeural",
+  "zh-CN-YunjieNeural","zh-CN-YunjieNeural1","zh-CN-XiaochenNeural","zh-CN-XiaoshuangNeural",
+  "zh-CN-XiaozhenNeural","zh-CN-XiaoyanNeural","zh-CN-XiaomoNeural","zh-CN-XiaohanNeural",
+  "zh-CN-XiaomengNeural","zh-CN-XiaoruiNeural","zh-CN-YunfengNeural","zh-CN-YunhaoNeural",
+  "zh-CN-YunyeNeural","zh-CN-YunzeNeural","zh-CN-YunzheNeural","zh-CN-YunzeNeuralV2",
+  "zh-CN-YunXiNeural","zh-CN-yunzeNeural","zh-CN-Yunze","zh-CN-YunzeNeural ",
+  // 方言：广西 / 辽宁男 / 河南 / 山东 / 四川 / 陕西 / 东北
+  "zh-CN-guangxi-YunqiNeural","zh-CN-liaoning-YunbiaoNeural","zh-CN-liaoning-XiaobeiNeural",
+  "zh-CN-shaanxi-XiaoniNeural","zh-CN-henan-YundengNeural","zh-CN-shandong-YunxiangNeural",
+  "zh-CN-sichuan-YunxiNeural","zh-CN-hunan-YunxiNeural","zh-CN-tianjin-YunxiNeural",
+  // 粤语新 locale（yue-CN，与 zh-HK 不同）
+  "yue-CN-XiaoMinNeural","yue-CN-YunSongNeural","yue-CN-YunxiNeural","zh-HK-XiaoMinNeural",
+  "zh-HK-YunSongNeural","zh-HK-HiuMaanNeural","zh-HK-WanLungNeural","zh-HK-HiuGaaiNeural",
+  // 闽南语 / 客家话 / 吴语（各方资料说法不一，实测为准）
+  "zh-CN-minnan-XiaowenNeural","zh-CN-hakka-XiaoyunNeural","zh-CN-wu-XiaopingNeural",
+  "nan-CN-XiaowenNeural","hak-CN-XiaoyunNeural","wuu-CN-XiaopingNeural",
+  // Dragon HD / Omni 系列（带冒号，看接口认不认）
+  "zh-CN-Xiaoxiao:DragonHDFlashLatestNeural","zh-CN-Yunxiao:DragonHDFlashLatestNeural",
+  "zh-CN-Xiaoyue:DragonHDOmniLatestNeural","zh-CN-Yunqi:DragonHDOmniLatestNeural",
+  "zh-CN-Xiaoxiao:DragonHDLatestNeural","zh-CN-Xiaochen:DragonHDLatestNeural",
+  // 多语言系列（补全 Azure 全量）
+  "fr-FR-RemyMultilingualNeural","it-IT-IsabellaMultilingualNeural","it-IT-AlessioMultilingualNeural",
+  "de-DE-FlorianMultilingualNeural","es-ES-ArabellaMultilingualNeural","es-MX-DaliaMultilingualNeural",
+  "pt-BR-ThalitaMultilingualNeural","pt-BR-MacerioMultilingualNeural","ja-JP-MayuMultilingualNeural",
+  "ko-KR-HyunsuMultilingualNeural","en-US-AvaMultilingualNeural","en-US-AndrewMultilingualNeural",
+  "en-US-EmmaMultilingualNeural","en-US-BrianMultilingualNeural","fr-FR-VivienneMultilingualNeural",
+  "de-DE-SeraphinaMultilingualNeural","zh-CN-XiaoxiaoMultilingualNeural","zh-CN-XiaochenMultilingualNeural",
+  "zh-CN-XiaoyuMultilingualNeural","zh-CN-YunyiMultilingualNeural","zh-CN-YunfanMultilingualNeural",
+];
+
+const logEl = document.getElementById("log");
+const lines = [];
+const say = (s) => { lines.push(s); logEl.textContent = lines.join("\n"); window.__status = s; };
+
+const results = new Array(CANDIDATES.length).fill(null);
+let cursor = 0, finished = 0;
+
+async function testOne(id) {
+  try {
+    const data = await synthesize({ text: TEXT, voice: id, timeoutMs: 25000 });
+    const info = probe(data);
+    if (!info.frames) return { id, verdict: "空数据", note: `${data.length}B 无有效帧` };
+    return { id, verdict: "可用", note: `${info.frames}帧/${info.duration.toFixed(2)}s` };
+  } catch (e) {
+    const cls = e.constructor?.name || "Error";
+    return { id, verdict: cls === "VoiceUnsupported" ? "不支持" : "失败", note: String(e.message).slice(0, 60) };
+  }
+}
+
+say(`巡检 ${CANDIDATES.length} 个候选（并发 ${CONC}）…`);
+await Promise.all(Array.from({ length: CONC }, async () => {
+  for (;;) {
+    const i = cursor++;
+    if (i >= CANDIDATES.length) return;
+    results[i] = await testOne(CANDIDATES[i]);
+    finished += 1;
+    window.__status = `${finished}/${CANDIDATES.length}`;
+  }
+}));
+
+const ok = results.filter((r) => r.verdict === "可用");
+const yunze = results.filter((r) => /yunze/i.test(r.id));
+window.__result = {
+  total: CANDIDATES.length, alive: ok.length,
+  aliveIds: ok.map((r) => `${r.id} (${r.note})`),
+  yunze: yunze.map((r) => `${r.id} → ${r.verdict}`),
+  all: results.map((r) => `${r.verdict}\t${r.id}\t${r.note}`),
+};
+window.__done = true;
+</script>
+</body>
+</html>

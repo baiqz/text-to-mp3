@@ -32,12 +32,68 @@ const EVAL_A = `(async () => {
   };
 
   check("页面初始化完成", window.__uiReady === true);
-  check("声库数量已显示", /\\d+ 个音色/.test($("voice-count").textContent), $("voice-count").textContent);
+  check("声库数量已显示", /\\d+ 个音色 · 中文 \\d+ 个/.test($("voice-count").textContent),
+    $("voice-count").textContent);
   const rows = document.querySelectorAll("#voices .voice").length;
-  check("音色列表已渲染", rows > 10, rows + " 项");
+  check("音色列表已渲染", rows === 26, rows + " 项");
   check("默认选中一个音色", !!document.querySelector("#voices .voice.on"),
     document.querySelector("#voices .voice.on")?.textContent || "");
   check("列表里没有已下架音色", !$("voices").textContent.includes("云泽"), "");
+  check("官方清单外的扩展音色带标记", document.querySelectorAll("#voices .vtag").length >= 1,
+    document.querySelectorAll("#voices .vtag").length + " 个");
+
+  // ---- 显示更多：323 个音色必须能一路翻到底，不能只能靠搜索 ----
+  // 按钮必须在滚动区外面（否则藏在 26 条之后根本看不见）
+  check("「显示更多」在列表滚动区外面",
+    $("voice-more") && !$("voices").contains($("voice-more")) &&
+    $("voice-more").getBoundingClientRect().height > 0,
+    $("voice-more").textContent);
+  const moreBtn = $("voice-more");
+  if (!moreBtn.hidden) {
+    moreBtn.click();
+    const after = document.querySelectorAll("#voices .voice").length;
+    check("点「显示更多」后列表变长", after > rows, rows + " → " + after);
+  } else {
+    check("点「显示更多」后列表变长", false, "按钮是隐藏的");
+  }
+
+  // ---- 类别筛选 ----
+  const chip = (f) => [...document.querySelectorAll("#voice-filters .chip")]
+    .find((b) => b.dataset.filter === f);
+  chip("zh").click();
+  const zhRows = document.querySelectorAll("#voices .voice").length;
+  check("筛选「中文」后只剩中文音色", zhRows > 0 && zhRows <= 16,
+    zhRows + " 项 · " + $("voice-shown").textContent);
+  chip("multi").click();
+  const mlRows = document.querySelectorAll("#voices .voice").length;
+  check("筛选「多语言」只剩多语言音色", mlRows > 0 && mlRows <= 20, mlRows + " 项");
+  chip("all").click();
+  check("切回「全部」恢复完整列表",
+    document.querySelectorAll("#voices .voice").length === 26, "");
+
+  // ---- 一键风格：音色 + 语速/音调要一起变，且必须与按钮上标注的数值完全一致 ----
+  const preset = document.querySelector("#presets .chip");
+  check("一键风格按钮已渲染", document.querySelectorAll("#presets .chip").length >= 5,
+    document.querySelectorAll("#presets .chip").length + " 个");
+  if (preset) {
+    const title = preset.title || "";
+    const wantRate = (title.match(/语速 ([+-]?\\d+)%/) || [])[1];
+    const wantPitch = (title.match(/音调 ([+-]?\\d+)Hz/) || [])[1];
+    const wantVolume = (title.match(/音量 ([+-]?\\d+)%/) || [])[1];
+    const wantVoice = (title.match(/音色 (\\S+?)，/) || [])[1];
+    preset.click();
+    check("套用风格的语速与按钮标注一致", $("rate").value === wantRate,
+      $("rate").value + " vs 标注 " + wantRate);
+    check("套用风格的音调与按钮标注一致", $("pitch").value === wantPitch,
+      $("pitch").value + " vs 标注 " + wantPitch);
+    check("套用风格的音量与按钮标注一致", $("volume").value === wantVolume,
+      $("volume").value + " vs 标注 " + wantVolume);
+    check("套用风格后语速标签同步", /[+-]\\d+%/.test($("rate-val").textContent),
+      $("rate-val").textContent);
+    const on = document.querySelector("#voices .voice.on");
+    check("套用风格后选中音色跟着变", !!on && on.title.startsWith(wantVoice),
+      (on?.title || "") + " vs 标注 " + wantVoice);
+  }
 
   $("text").value = ${JSON.stringify(SAMPLE)};
   $("text").dispatchEvent(new Event("input"));
@@ -49,6 +105,10 @@ const EVAL_A = `(async () => {
   const seg = Number((segText.match(/(\\d+)\\s*段/) || [])[1] || 0);
   check("长文本被切成多段", seg > 1, segText);
 
+  $("voice-search").value = "晓萱";
+  $("voice-search").dispatchEvent(new Event("input"));
+  check("能搜到实测恢复的中文音色晓萱", $("voices").textContent.includes("晓萱"),
+    document.querySelectorAll("#voices .voice").length + " 项");
   $("voice-search").value = "粤语";
   $("voice-search").dispatchEvent(new Event("input"));
   const filtered = document.querySelectorAll("#voices .voice").length;

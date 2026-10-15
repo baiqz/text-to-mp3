@@ -74,6 +74,20 @@ check("瞎写的音色被判为非法", catalog.is_valid_voice("xx-XX-NopeNeural
 check("空音色名被判为非法", catalog.is_valid_voice("") is False, "")
 check("带空格的音色名被判为非法", catalog.is_valid_voice("zh-CN- XiaoxiaoNeural") is False, "")
 
+# 反方向的坑：清单里没有、但服务端其实还能合成（晓萱）。
+# 只按 voices/list 过滤会把这类音色误杀 —— 2026-10-15 用真实浏览器逐个合成验证出来的。
+print("")
+print("=== 1b. 清单外但实测可用的音色不能被误杀 ===")
+EXTRA = "zh-CN-XiaoxuanNeural"        # 晓萱
+check("实测扩展表里有晓萱", EXTRA in catalog.VERIFIED_ALIVE_EXTRA, sorted(catalog.VERIFIED_ALIVE_EXTRA))
+check("扩展音色被判为合法（可在界面选择）", catalog.is_valid_voice(EXTRA) is True, "")
+check("扩展音色出现在精选清单里",
+      any(v["id"] == EXTRA for v in cat["curated"]), "")
+check("扩展音色也进了全量列表（否则搜索搜不到）",
+      any(v["id"] == EXTRA for v in cat["all"]), "")
+check("实测已下架的音色一个都不在精选清单里",
+      not any(v["id"] in catalog.VERIFIED_DEAD for v in cat["curated"]), "")
+
 # ---------------------------------------------------------------------------
 print("")
 print("=== 2. 选中已下架音色时，任务必须自动兜底 ===")

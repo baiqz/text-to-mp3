@@ -77,6 +77,9 @@ const escapeXml = (s) => s
   .replace(/</g, "&lt;")
   .replace(/>/g, "&gt;");
 
+// 注意：官方 SSML 的 mstts:express-as（情感风格）在这个朗读端点上会被拒绝
+// （close code 1007 · SSML is invalid，https/http/局部声明三种写法都试过），
+// 所以这里只支持 prosody 三种参数，音色差异只能靠换音色。
 function buildSsml({ text, voice, rate, volume, pitch }) {
   return `<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='en-US'>` +
     `<voice name='${voice}'><prosody pitch='${pitch}' rate='${rate}' volume='${volume}'>` +

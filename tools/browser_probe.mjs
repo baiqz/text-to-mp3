@@ -216,7 +216,7 @@ export async function runProbe({ page, timeoutSec = 90, shot = null }) {
 if (process.argv[1] && process.argv[1].endsWith("browser_probe.mjs")) {
   const page = process.argv[2] || "tests/browser/engine.html";
   const timeoutSec = Number(process.argv[3] || 90);
-  const out = await runProbe({ page, timeoutSec, shot: "_verify/probe.png" });
+  const out = await runProbe({ page, timeoutSec, shot: "probe.png" });
   console.log("\n--- 控制台 ---");
   for (const l of out.logs.slice(-25)) console.log("  " + l);
   if (out.errors.length) {
